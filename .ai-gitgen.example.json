@@ -1,0 +1,33 @@
+{
+  "language": "ko",
+  "commit": {
+    "types": ["feat", "fix", "docs", "refactor", "test", "chore"],
+    "scope": "required",
+    "scopes": ["auth", "api", "ui", "infra", "docs"],
+    "body": true,
+    "rules": [
+      "제목 요약은 '~ 추가', '~ 수정', '~ 개선' 처럼 명사형으로 끝낸다",
+      "이슈 번호를 알면 본문 마지막 불릿에 'Refs #번호' 로 적는다"
+    ]
+  },
+  "pr": {
+    "title_format": "[<scope>] <type>: <요약>",
+    "rules": ["리뷰어에게 특히 봐야 할 부분이 있으면 What 마지막 불릿에 '리뷰 포인트:' 로 적는다"],
+    "checklist": ["셀프 리뷰 완료", "테스트 통과 확인", "민감정보(키/개인정보) 미포함 확인"]
+  },
+  "safe_mode": {
+    "enabled": false,
+    "max_files": 10,
+    "max_lines": 200,
+    "max_chars": 60000,
+    "exclude_files": ["*.sql", "fixtures/*"],
+    "extra_patterns": [
+      {"name": "internal_host", "pattern": "\\b[a-z0-9-]+\\.internal\\.mycompany\\.com\\b", "replace": "[MASKED_HOST]"}
+    ]
+  },
+  "defaults": {
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "max_tokens": 8000
+  }
+}
