@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+.DS_Store
+.idea/
+.vscode/
+# 생성 결과 저장 파일
+PR.md
+AI_MSG
