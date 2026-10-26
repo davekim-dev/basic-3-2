@@ -736,11 +736,13 @@ max_tokens 너무 작음 (10)
 | P-8 | 변경 이유 함께 전달 | `-c "회원가입 요구사항 반영"` |
 | P-9 | 결과를 파일로 저장 | `--save PR.md` |
 
-### 경우별 실습 명령 (Windows PowerShell)
+### 경우별 실습 명령 (Windows PowerShell / macOS)
 
-#### 시작 전 확인
+각 경우는 **① Windows PowerShell → ② macOS (zsh/bash) → ③ CLI 출력 결과** 순서로 정리했습니다.
 
-```powershell
+#### 시작 전 확인 (Windows / macOS 공통)
+
+```bash
 cd "<basic-3-2 폴더 경로>"
 git status --short          # 아무것도 나오지 않아야 함 (작업 중인 변경은 먼저 커밋)
 git branch --show-current   # main
@@ -750,18 +752,44 @@ git branch --show-current   # main
 - 연습 파일은 `practice.py`, `practice2.py` 등 **새 파일만** 사용하고, 각 블록의 `# 정리` 까지 실행하면 시작 전 상태로 돌아옵니다.
 - 커밋이 필요한 경우는 임시 브랜치 `practice` 에서만 커밋하고, 정리할 때 브랜치째 삭제합니다. **`practice` 브랜치는 push 하지 않습니다.**
 - 비용 없이 확인만 하려면 실행 명령 끝에 `--dry-run` 을 붙입니다.
-- 파일 생성에 `-Encoding ascii` 를 쓰는 이유: PowerShell 5.1 의 `utf8` 은 파일 앞에 BOM 을 붙여 diff 에 보이지 않는 문자가 섞입니다.
+- Windows 에서 파일 생성에 `-Encoding ascii` 를 쓰는 이유: PowerShell 5.1 의 `utf8` 은 파일 앞에 BOM 을 붙여 diff 에 보이지 않는 문자가 섞입니다.
+- Windows 에서 `git add` 시 나오는 `LF will be replaced by CRLF` 경고는 줄바꿈 변환 안내이므로 무시해도 됩니다.
+
+**③ CLI 출력 결과 읽는 법**
+
+- `.env` 에 `AI_API_KEY`, `AI_API_BASE_URL`(https://copa.codyssey.kr), `AI_MODEL`(claude-sonnet-4) 을 설정하고 실행한 실제 결과입니다.
+- AI 가 만든 부분(커밋 메시지, PR 제목/본문)과 토큰 수는 **실행할 때마다 달라질 수 있습니다.** 확인할 부분은 수집 범위(`[staged ...]`, `[working tree ...]` 등)와 형식입니다.
+- 결과는 `--max-calls 1` 로 실행해서 `AI API 요청 중... (1/1)` 로 표시됩니다. 기본값으로 실행하면 `(1/2)` 로 표시됩니다.
+- `[INFO] .env 에서 환경변수 불러옴` 줄은 `.env` 를 사용할 때만 나옵니다. 터미널에 직접 설정했다면 나오지 않습니다.
+
+---
 
 #### commit
 
+##### C-1 변경 없음
+
+① Windows PowerShell
 ```powershell
-# C-1 변경 없음
 py -3.13 main.py commit
 ```
 
+② macOS
+```bash
+python3 main.py commit
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] 변경 사항이 없습니다. 커밋 메시지를 생성하지 않고 종료합니다.
+```
+
+##### C-2 기존(추적 중) 파일 수정, git add 안 함
+
+준비: 임시 브랜치에서 `practice.py` 를 커밋해 "추적 중인 파일" 로 만든 뒤 수정합니다.
+
+① Windows PowerShell
 ```powershell
-# C-2 기존(추적 중) 파일 수정, git add 안 함
-# 준비: 임시 브랜치에서 practice.py 를 커밋해 "추적 중인 파일" 로 만든다
 git switch -c practice
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 git add practice.py
@@ -775,16 +803,87 @@ git switch main
 git branch -D practice
 ```
 
+② macOS
+```bash
+git switch -c practice
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+git add practice.py
+git commit -m "practice: add practice.py"
+printf 'def sub(a, b):\n    return a - b\n' >> practice.py
+# 실행
+python3 main.py commit
+# 정리
+git restore practice.py
+git switch main
+git branch -D practice
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] Git status 수집 완료: 1개 파일 변경 감지
+[INFO] Git diff 수집 완료: 9줄 (+2/-0) [working tree (git diff HEAD + untracked)]
+[INFO] AI 전송 diff: 파일 1개, 9줄, 189자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1040 / 출력 56 토큰, stop_reason=end_turn
+[DONE] 커밋 메시지 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- Commit Message ---
+feat(practice): 뺄셈 함수 추가
+
+- practice.py에 두 수를 빼는 sub(a, b) 함수 추가
+------------------------------------------------------------
+[검증 통과] 제목 길이 24자 (권장 ≤50, 최대 72) · 본문 불릿 1개
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+##### C-3 새 파일만 있음, git add 안 함
+
+① Windows PowerShell
 ```powershell
-# C-3 새 파일만 있음, git add 안 함
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 py -3.13 main.py commit
 # 정리
 Remove-Item practice.py
 ```
 
+② macOS
+```bash
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+python3 main.py commit
+# 정리
+rm practice.py
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] Git status 수집 완료: 1개 파일 변경 감지
+[INFO] Git diff 수집 완료: 8줄 (+2/-0) [working tree (git diff HEAD + untracked)]
+[INFO] AI 전송 diff: 파일 1개, 8줄, 165자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1029 / 출력 53 토큰, stop_reason=end_turn
+[DONE] 커밋 메시지 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- Commit Message ---
+feat: add 함수 추가
+
+- practice.py에 두 수를 더하는 add(a, b) 함수를 새로 작성
+------------------------------------------------------------
+[검증 통과] 제목 길이 15자 (권장 ≤50, 최대 72) · 본문 불릿 1개
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+##### C-4 git add 한 파일만 있음
+
+① Windows PowerShell
 ```powershell
-# C-4 git add 한 파일만 있음
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 git add practice.py
 py -3.13 main.py commit
@@ -793,8 +892,44 @@ git restore --staged practice.py
 Remove-Item practice.py
 ```
 
+② macOS
+```bash
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+git add practice.py
+python3 main.py commit
+# 정리
+git restore --staged practice.py
+rm practice.py
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] Git status 수집 완료: 1개 파일 변경 감지
+[INFO] Git diff 수집 완료: 8줄 (+2/-0) [staged (git diff --cached)]
+[INFO] AI 전송 diff: 파일 1개, 8줄, 165자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1027 / 출력 52 토큰, stop_reason=end_turn
+[DONE] 커밋 메시지 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- Commit Message ---
+feat: add 함수 추가
+
+- practice.py에 두 수를 더하는 add(a, b) 함수 신규 작성
+------------------------------------------------------------
+[검증 통과] 제목 길이 15자 (권장 ≤50, 최대 72) · 본문 불릿 1개
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+##### C-5 git add 한 파일 + 안 한 파일 섞임
+
+`git add` 한 `practice.py` 만 수집되고, `practice2.py` 는 메시지에 포함되지 않습니다.
+
+① Windows PowerShell
 ```powershell
-# C-5 git add 한 파일 + 안 한 파일 섞임
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 Set-Content practice2.py "def mul(a, b):`n    return a * b" -Encoding ascii
 git add practice.py
@@ -804,16 +939,69 @@ git restore --staged practice.py
 Remove-Item practice.py, practice2.py
 ```
 
+② macOS
+```bash
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+printf 'def mul(a, b):\n    return a * b\n' > practice2.py
+git add practice.py
+python3 main.py commit
+# 정리
+git restore --staged practice.py
+rm practice.py practice2.py
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] Git status 수집 완료: 1개 파일 변경 감지
+[INFO] Git diff 수집 완료: 8줄 (+2/-0) [staged (git diff --cached)]
+[INFO] AI 전송 diff: 파일 1개, 8줄, 165자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1027 / 출력 64 토큰, stop_reason=end_turn
+[DONE] 커밋 메시지 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- Commit Message ---
+feat: 두 수를 더하는 add 함수 추가
+
+- practice.py에 두 인자를 받아 합산값을 반환하는 add 함수 구현
+------------------------------------------------------------
+[검증 통과] 제목 길이 24자 (권장 ≤50, 최대 72) · 본문 불릿 1개
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+##### C-6 --staged 인데 git add 한 파일 없음
+
+파일이 바뀌어 있어도 `--staged` 는 add 한 파일만 보므로 "변경 없음" 으로 끝납니다.
+
+① Windows PowerShell
 ```powershell
-# C-6 --staged 인데 git add 한 파일 없음
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 py -3.13 main.py commit --staged
 # 정리
 Remove-Item practice.py
 ```
 
+② macOS
+```bash
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+python3 main.py commit --staged
+# 정리
+rm practice.py
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] 변경 사항이 없습니다. 커밋 메시지를 생성하지 않고 종료합니다.
+```
+
+##### C-7 파일 삭제
+
+① Windows PowerShell
 ```powershell
-# C-7 파일 삭제
 git switch -c practice
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 git add practice.py
@@ -827,8 +1015,47 @@ git switch main
 git branch -D practice
 ```
 
+② macOS
+```bash
+git switch -c practice
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+git add practice.py
+git commit -m "practice: add practice.py"
+rm practice.py
+# 실행
+python3 main.py commit
+# 정리
+git restore practice.py
+git switch main
+git branch -D practice
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] Git status 수집 완료: 1개 파일 변경 감지
+[INFO] Git diff 수집 완료: 8줄 (+0/-2) [working tree (git diff HEAD + untracked)]
+[INFO] AI 전송 diff: 파일 1개, 8줄, 169자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1027 / 출력 64 토큰, stop_reason=end_turn
+[DONE] 커밋 메시지 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- Commit Message ---
+chore: practice.py 파일 삭제
+
+- 연습용으로 작성된 practice.py의 add 함수 정의를 포함한 파일 전체를 제거
+------------------------------------------------------------
+[검증 통과] 제목 길이 24자 (권장 ≤50, 최대 72) · 본문 불릿 1개
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+##### C-8 파일 이름 변경
+
+① Windows PowerShell
 ```powershell
-# C-8 파일 이름 변경
 git switch -c practice
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 git add practice.py
@@ -842,8 +1069,49 @@ git switch main
 git branch -D practice
 ```
 
+② macOS
+```bash
+git switch -c practice
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+git add practice.py
+git commit -m "practice: add practice.py"
+git mv practice.py practice_math.py
+# 실행
+python3 main.py commit
+# 정리
+git mv practice_math.py practice.py
+git switch main
+git branch -D practice
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] Git status 수집 완료: 1개 파일 변경 감지
+[INFO] Git diff 수집 완료: 4줄 (+0/-0) [staged (git diff --cached)]
+[INFO] AI 전송 diff: 파일 1개, 4줄, 117자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 994 / 출력 79 토큰, stop_reason=end_turn
+[DONE] 커밋 메시지 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- Commit Message ---
+refactor: practice.py 파일명을 practice_math.py로 변경
+
+- 파일 내용 변경 없이 practice.py를 practice_math.py로 이름 변경하여 파일 목적을 명확히 함
+------------------------------------------------------------
+[검증 통과] 제목 길이 47자 (권장 ≤50, 최대 72) · 본문 불릿 1개
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+##### C-9 민감 파일 포함
+
+`secret.env` 는 파일 목록에만 들어가고 **내용은 AI 에 보내지 않습니다** (`AI 전송 diff: 파일 1개`).
+
+① Windows PowerShell
 ```powershell
-# C-9 민감 파일 포함
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 Set-Content secret.env "PASSWORD=practice1234" -Encoding ascii
 py -3.13 main.py commit
@@ -851,8 +1119,43 @@ py -3.13 main.py commit
 Remove-Item practice.py, secret.env
 ```
 
+② macOS
+```bash
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+printf 'PASSWORD=practice1234\n' > secret.env
+python3 main.py commit
+# 정리
+rm practice.py secret.env
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] Git status 수집 완료: 2개 파일 변경 감지
+[INFO] Git diff 수집 완료: 15줄 (+3/-0) [working tree (git diff HEAD + untracked)]
+[INFO] 내용 제외: secret.env (민감 파일 - 내용 제외)
+[INFO] AI 전송 diff: 파일 1개, 8줄, 165자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1084 / 출력 103 토큰, stop_reason=end_turn
+[DONE] 커밋 메시지 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- Commit Message ---
+feat: 덧셈 함수 추가 및 환경 파일 생성
+
+- practice.py에 두 수를 더하는 add(a, b) 함수 추가
+- secret.env 환경 설정 파일 신규 생성 (민감 정보 포함으로 내용 비공개)
+------------------------------------------------------------
+[검증 통과] 제목 길이 25자 (권장 ≤50, 최대 72) · 본문 불릿 2개
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+##### C-10 민감 값이 들어간 코드 + safe-mode (가짜 키/이메일 사용)
+
+① Windows PowerShell
 ```powershell
-# C-10 민감 값이 들어간 코드 + safe-mode (가짜 키/이메일 사용)
 Set-Content practice_config.py 'API_KEY = "sk-ant-api03-practicepracticepractice"', 'OWNER = "kim@example.com"' -Encoding ascii
 py -3.13 main.py commit --dry-run               # safe-mode OFF: 전송될 프롬프트 확인
 py -3.13 main.py commit --dry-run --safe-mode   # safe-mode ON : 전송될 프롬프트 비교
@@ -861,8 +1164,65 @@ py -3.13 main.py commit --safe-mode             # 실제 실행
 Remove-Item practice_config.py
 ```
 
+② macOS
+```bash
+printf '%s\n' 'API_KEY = "sk-ant-api03-practicepracticepractice"' 'OWNER = "kim@example.com"' > practice_config.py
+python3 main.py commit --dry-run               # safe-mode OFF: 전송될 프롬프트 확인
+python3 main.py commit --dry-run --safe-mode   # safe-mode ON : 전송될 프롬프트 비교
+python3 main.py commit --safe-mode             # 실제 실행
+# 정리
+rm practice_config.py
+```
+
+③ CLI 출력 결과
+
+safe-mode OFF (`--dry-run`, 프롬프트 중 해당 부분만 발췌)
+```text
+[INFO] AI 전송 diff: 파일 1개, 8줄, 230자
+...
++API_KEY = "sk-ant-api03-practicepracticepractice"
++OWNER = "kim@example.com"
+```
+
+safe-mode ON (`--dry-run --safe-mode`, 프롬프트 중 해당 부분만 발췌)
+```text
+[INFO] safe-mode ON: 파일 최대 10개 / 최대 200줄, 마스킹 2건 {'anthropic_key': 1, 'email': 1}
+[INFO] AI 전송 diff: 파일 1개, 8줄, 208자
+...
++API_KEY = "[MASKED_API_KEY]"
++OWNER = "[MASKED_EMAIL]"
+```
+
+실제 실행 (`--safe-mode`)
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] Git status 수집 완료: 1개 파일 변경 감지
+[INFO] Git diff 수집 완료: 8줄 (+2/-0) [working tree (git diff HEAD + untracked)]
+[INFO] safe-mode ON: 파일 최대 10개 / 최대 200줄, 마스킹 2건 {'anthropic_key': 1, 'email': 1}
+[INFO] AI 전송 diff: 파일 1개, 8줄, 208자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1048 / 출력 104 토큰, stop_reason=end_turn
+[DONE] 커밋 메시지 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- Commit Message ---
+chore: practice_config 설정 파일 추가
+
+- API_KEY와 OWNER 값을 보관하는 practice_config.py 파일 신규 생성
+- 민감 정보(API 키, 이메일)가 포함되어 있으므로 .gitignore 등록 여부 확인 필요
+------------------------------------------------------------
+[검증 통과] 제목 길이 31자 (권장 ≤50, 최대 72) · 본문 불릿 2개
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+##### C-11 변경 이유 함께 전달
+
+`-c` 로 준 내용("계산 기능 연습용")이 제목에 반영됩니다.
+
+① Windows PowerShell
 ```powershell
-# C-11 변경 이유 함께 전달
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 git add practice.py
 py -3.13 main.py commit -c "계산 기능 연습용 함수 추가"
@@ -871,8 +1231,44 @@ git restore --staged practice.py
 Remove-Item practice.py
 ```
 
+② macOS
+```bash
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+git add practice.py
+python3 main.py commit -c "계산 기능 연습용 함수 추가"
+# 정리
+git restore --staged practice.py
+rm practice.py
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] Git status 수집 완료: 1개 파일 변경 감지
+[INFO] Git diff 수집 완료: 8줄 (+2/-0) [staged (git diff --cached)]
+[INFO] AI 전송 diff: 파일 1개, 8줄, 165자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1065 / 출력 72 토큰, stop_reason=end_turn
+[DONE] 커밋 메시지 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- Commit Message ---
+feat: 계산 기능 연습용 덧셈 함수 추가
+
+- practice.py에 두 값을 더해 반환하는 add(a, b) 함수를 새로 추가함
+------------------------------------------------------------
+[검증 통과] 제목 길이 24자 (권장 ≤50, 최대 72) · 본문 불릿 1개
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+##### C-12 형식 위반 시 재생성(2) vs 후처리(1)
+
+AI 응답이 규칙을 지키면 둘 다 1회로 끝납니다. 규칙을 어기면 `--max-calls 2` 는 `[WARN] 형식 규칙 위반 → 1회 재생성` 후 다시 요청하고, `--max-calls 1` 은 `[WARN] 후처리: ...` 로 직접 다듬습니다.
+
+① Windows PowerShell
 ```powershell
-# C-12 형식 위반 시 재생성(2) vs 후처리(1)  ※ AI 응답이 규칙을 지키면 둘 다 1회로 끝남
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 git add practice.py
 py -3.13 main.py commit --max-calls 2
@@ -882,8 +1278,67 @@ git restore --staged practice.py
 Remove-Item practice.py
 ```
 
+② macOS
+```bash
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+git add practice.py
+python3 main.py commit --max-calls 2
+python3 main.py commit --max-calls 1
+# 정리
+git restore --staged practice.py
+rm practice.py
+```
+
+③ CLI 출력 결과 (이번 실행에서는 둘 다 형식을 지켜 1회로 끝남)
+
+`--max-calls 2`
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] Git status 수집 완료: 1개 파일 변경 감지
+[INFO] Git diff 수집 완료: 8줄 (+2/-0) [staged (git diff --cached)]
+[INFO] AI 전송 diff: 파일 1개, 8줄, 165자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/2)
+[INFO] 응답 수신: 입력 1027 / 출력 70 토큰, stop_reason=end_turn
+[DONE] 커밋 메시지 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- Commit Message ---
+feat: 두 수를 더하는 add 함수 추가
+
+- practice.py에 두 인자 a, b를 받아 합산 결과를 반환하는 add 함수 추가
+------------------------------------------------------------
+[검증 통과] 제목 길이 24자 (권장 ≤50, 최대 72) · 본문 불릿 1개
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+`--max-calls 1`
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] Git status 수집 완료: 1개 파일 변경 감지
+[INFO] Git diff 수집 완료: 8줄 (+2/-0) [staged (git diff --cached)]
+[INFO] AI 전송 diff: 파일 1개, 8줄, 165자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1027 / 출력 60 토큰, stop_reason=end_turn
+[DONE] 커밋 메시지 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- Commit Message ---
+feat: 덧셈 함수 추가
+
+- practice.py에 두 수를 더해 반환하는 add(a, b) 함수 신규 작성
+------------------------------------------------------------
+[검증 통과] 제목 길이 14자 (권장 ≤50, 최대 72) · 본문 불릿 1개
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+##### C-13 결과를 파일로 저장
+
+① Windows PowerShell
 ```powershell
-# C-13 결과를 파일로 저장
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 git add practice.py
 py -3.13 main.py commit --save AI_MSG
@@ -893,23 +1348,125 @@ git restore --staged practice.py
 Remove-Item practice.py, AI_MSG
 ```
 
+② macOS
+```bash
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+git add practice.py
+python3 main.py commit --save AI_MSG
+cat AI_MSG                            # 실제 적용은 git commit -F AI_MSG (실습에서는 실행하지 않음)
+# 정리
+git restore --staged practice.py
+rm practice.py AI_MSG
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] Git status 수집 완료: 1개 파일 변경 감지
+[INFO] Git diff 수집 완료: 8줄 (+2/-0) [staged (git diff --cached)]
+[INFO] AI 전송 diff: 파일 1개, 8줄, 165자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1027 / 출력 52 토큰, stop_reason=end_turn
+[DONE] 커밋 메시지 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- Commit Message ---
+feat: add 함수 추가
+
+- practice.py에 두 수를 더하는 add(a, b) 함수 신규 작성
+------------------------------------------------------------
+[검증 통과] 제목 길이 15자 (권장 ≤50, 최대 72) · 본문 불릿 1개
+[INFO] 저장됨: AI_MSG (적용: git commit -F AI_MSG)
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+`AI_MSG` 파일 내용
+```text
+feat: add 함수 추가
+
+- practice.py에 두 수를 더하는 add(a, b) 함수 신규 작성
+```
+
+---
+
 #### pr
 
+##### P-1 main 에서 실행, 변경 없음
+
+① Windows PowerShell
 ```powershell
-# P-1 main 에서 실행, 변경 없음
 py -3.13 main.py pr
 ```
 
+② macOS
+```bash
+python3 main.py pr
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] 현재 브랜치: main (base: main)
+[INFO] 변경 사항이 없습니다. PR 초안를 생성하지 않고 종료합니다.
+```
+
+##### P-2 main 에서 실행, 커밋 안 한 변경 있음
+
+① Windows PowerShell
 ```powershell
-# P-2 main 에서 실행, 커밋 안 한 변경 있음
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 py -3.13 main.py pr
 # 정리
 Remove-Item practice.py
 ```
 
+② macOS
+```bash
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+python3 main.py pr
+# 정리
+rm practice.py
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] 현재 브랜치: main (base: main)
+[INFO] Git status 수집 완료: 1개 파일 변경 감지
+[INFO] Git diff 수집 완료: 8줄 (+2/-0) [uncommitted changes (git diff HEAD)]
+[INFO] AI 전송 diff: 파일 1개, 8줄, 165자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1085 / 출력 204 토큰, stop_reason=end_turn
+[DONE] PR 초안 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- PR Title ---
+feat: add 함수 추가
+
+--- PR Body ---
+## Why
+- 두 수를 더하는 기본 연산 기능이 필요하여 practice.py에 add 함수를 작성함
+
+## What
+- practice.py 신규 파일 생성
+- 두 인자 a, b를 받아 합산 결과를 반환하는 add(a, b) 함수 구현
+
+## How to Test
+- python3 -c "from practice import add; print(add(2, 3))" 실행 후 출력값이 5인지 확인
+- python3 -c "from practice import add; print(add(-1, 1))" 실행 후 출력값이 0인지 확인
+------------------------------------------------------------
+[검증 통과] PR 제목 15자 (최대 80) · Why 1 / What 2 / How to Test 2 불릿
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+##### P-3 브랜치 생성 직후, 커밋·변경 없음
+
+① Windows PowerShell
 ```powershell
-# P-3 브랜치 생성 직후, 커밋·변경 없음
 git switch -c practice
 py -3.13 main.py pr
 # 정리
@@ -917,8 +1474,28 @@ git switch main
 git branch -D practice
 ```
 
+② macOS
+```bash
+git switch -c practice
+python3 main.py pr
+# 정리
+git switch main
+git branch -D practice
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] 현재 브랜치: practice (base: main)
+[INFO] 변경 사항이 없습니다. PR 초안를 생성하지 않고 종료합니다.
+```
+
+##### P-4 브랜치에서 커밋 있음, 커밋 안 한 변경 없음
+
+커밋 안 한 파일이 없어서 `0개 파일 변경 감지` 로 나오지만, `main...HEAD` 커밋 차이를 수집합니다.
+
+① Windows PowerShell
 ```powershell
-# P-4 브랜치에서 커밋 있음, 커밋 안 한 변경 없음
 git switch -c practice
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 git add practice.py
@@ -929,8 +1506,55 @@ git switch main
 git branch -D practice
 ```
 
+② macOS
+```bash
+git switch -c practice
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+git add practice.py
+git commit -m "practice: add practice.py"
+python3 main.py pr
+# 정리
+git switch main
+git branch -D practice
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] 현재 브랜치: practice (base: main)
+[INFO] Git status 수집 완료: 0개 파일 변경 감지
+[INFO] Git diff 수집 완료: 8줄 (+2/-0) [git diff main...HEAD]
+[INFO] AI 전송 diff: 파일 1개, 8줄, 165자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1085 / 출력 238 토큰, stop_reason=end_turn
+[DONE] PR 초안 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- PR Title ---
+feat: 두 수를 더하는 add 함수 추가
+
+--- PR Body ---
+## Why
+- 기본적인 덧셈 연산을 재사용 가능한 함수로 제공하기 위해 practice.py 파일을 새로 생성
+
+## What
+- practice.py 신규 생성: 두 인자 a, b를 받아 합산 결과를 반환하는 add(a, b) 함수 추가
+
+## How to Test
+- Python 인터프리터 또는 스크립트에서 `from practice import add` 로 함수를 임포트
+- `add(2, 3)` 호출 시 `5` 가 반환되는지 확인
+- `add(-1, 1)` 호출 시 `0` 이 반환되는지 확인
+------------------------------------------------------------
+[검증 통과] PR 제목 24자 (최대 80) · Why 1 / What 1 / How to Test 3 불릿
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+##### P-5 브랜치에서 커밋 있음 + 커밋 안 한 변경 있음
+
+① Windows PowerShell
 ```powershell
-# P-5 브랜치에서 커밋 있음 + 커밋 안 한 변경 있음
 git switch -c practice
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 git add practice.py
@@ -943,8 +1567,60 @@ git switch main
 git branch -D practice
 ```
 
+② macOS
+```bash
+git switch -c practice
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+git add practice.py
+git commit -m "practice: add practice.py"
+printf 'def mul(a, b):\n    return a * b\n' > practice2.py
+python3 main.py pr
+# 정리
+rm practice2.py
+git switch main
+git branch -D practice
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] 현재 브랜치: practice (base: main)
+[INFO] Git status 수집 완료: 1개 파일 변경 감지
+[INFO] Git diff 수집 완료: 16줄 (+4/-0) [git diff main...HEAD + uncommitted changes (git diff HEAD)]
+[INFO] AI 전송 diff: 파일 2개, 16줄, 333자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1175 / 출력 330 토큰, stop_reason=end_turn
+[DONE] PR 초안 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- PR Title ---
+feat: 덧셈 및 곱셈 함수 추가
+
+--- PR Body ---
+## Why
+- 기본 산술 연산(덧셈, 곱셈)을 수행하는 함수가 필요하여 새 파일로 추가
+
+## What
+- practice.py: 두 인자를 받아 합산하는 `add(a, b)` 함수 추가
+- practice2.py: 두 인자를 받아 곱셈하는 `mul(a, b)` 함수 추가 (현재 untracked 상태로, 커밋 포함 여부 확인 필요)
+
+## How to Test
+- Python 인터프리터에서 `from practice import add` 후 `add(2, 3)` 실행 → 결과 `5` 확인
+- Python 인터프리터에서 `from practice2 import mul` 후 `mul(2, 3)` 실행 → 결과 `6` 확인
+- practice2.py 가 untracked 상태이므로 `git add practice2.py` 후 커밋에 포함할지 팀원과 확인
+------------------------------------------------------------
+[검증 통과] PR 제목 19자 (최대 80) · Why 1 / What 2 / How to Test 3 불릿
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+##### P-6 비교 기준 브랜치 지정
+
+연습용 기준 브랜치 `practice-base` 를 만들어 `--base` 로 지정합니다.
+
+① Windows PowerShell
 ```powershell
-# P-6 비교 기준 브랜치 지정 (연습용 기준 브랜치 practice-base 를 만들어 사용)
 git branch practice-base
 git switch -c practice
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
@@ -956,13 +1632,75 @@ git switch main
 git branch -D practice practice-base
 ```
 
+② macOS
+```bash
+git branch practice-base
+git switch -c practice
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+git add practice.py
+git commit -m "practice: add practice.py"
+python3 main.py pr --base practice-base
+# 정리
+git switch main
+git branch -D practice practice-base
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] 현재 브랜치: practice (base: practice-base)
+[INFO] Git status 수집 완료: 0개 파일 변경 감지
+[INFO] Git diff 수집 완료: 8줄 (+2/-0) [git diff practice-base...HEAD]
+[INFO] AI 전송 diff: 파일 1개, 8줄, 165자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1087 / 출력 194 토큰, stop_reason=end_turn
+[DONE] PR 초안 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- PR Title ---
+feat: add 함수 추가
+
+--- PR Body ---
+## Why
+- 두 숫자를 더하는 기본 연산 기능이 필요하여 구현
+
+## What
+- practice.py에 두 인자 a, b를 받아 합산 결과를 반환하는 add(a, b) 함수 추가
+
+## How to Test
+- python -c "from practice import add; print(add(1, 2))" 실행 후 출력값이 3인지 확인
+- 음수, 0, 소수 등 다양한 입력값으로 add() 호출 시 올바른 합산 결과가 반환되는지 확인
+------------------------------------------------------------
+[검증 통과] PR 제목 15자 (최대 80) · Why 1 / What 1 / How to Test 2 불릿
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+##### P-7 없는 비교 기준 브랜치 지정
+
+① Windows PowerShell
 ```powershell
-# P-7 없는 비교 기준 브랜치 지정
 py -3.13 main.py pr --base no-such-branch
 ```
 
+② macOS
+```bash
+python3 main.py pr --base no-such-branch
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[ERROR] Git 오류: 비교 기준 브랜치 'no-such-branch' 를 찾을 수 없습니다. --base 옵션을 확인하세요.
+```
+
+##### P-8 변경 이유 함께 전달
+
+`-c` 로 준 내용("계산 기능 요구사항")이 Why 에 반영됩니다.
+
+① Windows PowerShell
 ```powershell
-# P-8 변경 이유 함께 전달
 git switch -c practice
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 git add practice.py
@@ -973,8 +1711,56 @@ git switch main
 git branch -D practice
 ```
 
+② macOS
+```bash
+git switch -c practice
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+git add practice.py
+git commit -m "practice: add practice.py"
+python3 main.py pr -c "계산 기능 요구사항 반영"
+# 정리
+git switch main
+git branch -D practice
+```
+
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] 현재 브랜치: practice (base: main)
+[INFO] Git status 수집 완료: 0개 파일 변경 감지
+[INFO] Git diff 수집 완료: 8줄 (+2/-0) [git diff main...HEAD]
+[INFO] AI 전송 diff: 파일 1개, 8줄, 165자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1121 / 출력 250 토큰, stop_reason=end_turn
+[DONE] PR 초안 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- PR Title ---
+feat: 두 수를 더하는 add 함수 추가
+
+--- PR Body ---
+## Why
+- 계산 기능 요구사항에 따라 두 수의 합을 반환하는 기본 연산 함수가 필요함
+
+## What
+- practice.py 신규 파일 생성
+- 두 인자 a, b를 받아 합산 결과를 반환하는 add(a, b) 함수 구현
+
+## How to Test
+- Python 인터프리터 또는 REPL에서 `from practice import add` 로 함수 임포트
+- `add(1, 2)` 호출 후 반환값이 `3` 인지 확인
+- 음수·0 등 경계값(예: `add(-1, 1)`, `add(0, 0)`)으로도 결과가 올바른지 확인
+------------------------------------------------------------
+[검증 통과] PR 제목 24자 (최대 80) · Why 1 / What 2 / How to Test 3 불릿
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+##### P-9 결과를 파일로 저장
+
+① Windows PowerShell
 ```powershell
-# P-9 결과를 파일로 저장
 git switch -c practice
 Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
 git add practice.py
@@ -987,9 +1773,73 @@ git switch main
 git branch -D practice
 ```
 
-#### 정리가 잘 됐는지 확인
+② macOS
+```bash
+git switch -c practice
+printf 'def add(a, b):\n    return a + b\n' > practice.py
+git add practice.py
+git commit -m "practice: add practice.py"
+python3 main.py pr --save PR.md
+cat PR.md
+# 정리
+rm PR.md
+git switch main
+git branch -D practice
+```
 
-```powershell
+③ CLI 출력 결과
+```text
+[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_API_BASE_URL, AI_MODEL
+[INFO] 현재 브랜치: practice (base: main)
+[INFO] Git status 수집 완료: 0개 파일 변경 감지
+[INFO] Git diff 수집 완료: 8줄 (+2/-0) [git diff main...HEAD]
+[INFO] AI 전송 diff: 파일 1개, 8줄, 165자
+[INFO] API 주소: https://copa.codyssey.kr
+[INFO] 모델: claude-sonnet-4, temperature=model default, max_tokens=8000, effort=medium
+[INFO] AI API 요청 중... (1/1)
+[INFO] 응답 수신: 입력 1085 / 출력 207 토큰, stop_reason=end_turn
+[DONE] PR 초안 생성 완료
+[INFO] AI API 호출 횟수: 1회
+
+--- PR Title ---
+feat: 두 수를 더하는 add 함수 추가
+
+--- PR Body ---
+## Why
+- 기본적인 덧셈 연산을 수행하는 유틸리티 함수가 필요하여 추가함
+
+## What
+- practice.py 에 두 인자 a, b 를 받아 합산 결과를 반환하는 add(a, b) 함수 신규 작성
+
+## How to Test
+- python -c "from practice import add; print(add(2, 3))" 실행 후 출력값이 5 인지 확인
+- python -c "from practice import add; print(add(-1, 1))" 실행 후 출력값이 0 인지 확인
+------------------------------------------------------------
+[검증 통과] PR 제목 24자 (최대 80) · Why 1 / What 1 / How to Test 2 불릿
+[INFO] 저장됨: PR.md (적용: PR 작성 화면에 붙여넣기)
+[INFO] 생성 결과는 초안입니다. 내용을 검토한 뒤 적용하세요.
+```
+
+`PR.md` 파일 내용
+```text
+feat: 두 수를 더하는 add 함수 추가
+
+## Why
+- 기본적인 덧셈 연산을 수행하는 유틸리티 함수가 필요하여 추가함
+
+## What
+- practice.py 에 두 인자 a, b 를 받아 합산 결과를 반환하는 add(a, b) 함수 신규 작성
+
+## How to Test
+- python -c "from practice import add; print(add(2, 3))" 실행 후 출력값이 5 인지 확인
+- python -c "from practice import add; print(add(-1, 1))" 실행 후 출력값이 0 인지 확인
+```
+
+---
+
+#### 정리가 잘 됐는지 확인 (Windows / macOS 공통)
+
+```bash
 git status --short     # 아무것도 나오지 않아야 함
 git branch             # main 만 있어야 함
 ```
