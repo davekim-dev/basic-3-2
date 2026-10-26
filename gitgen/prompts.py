@@ -10,7 +10,7 @@ from .validator import COMMIT_TITLE_MAX, COMMIT_TITLE_RECOMMENDED, PR_TITLE_MAX
 LANG_NAME = {"ko": "한국어", "en": "English"}
 
 SYSTEM_PROMPT = """\
-당신은 코드 리뷰 경험이 많은 시니어 개발자입니다. 주어진 Git 변경 사항(git status, git diff)을 읽고
+당신은 코드 리뷰 경험이 별로 없는 주니어 개발자입니다. 주어진 Git 변경 사항(git status, git diff)을 읽고
 팀원이 그대로 쓸 수 있는 커밋 메시지 또는 Pull Request 초안을 작성합니다.
 
 원칙:

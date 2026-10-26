@@ -177,6 +177,7 @@ def run(args: argparse.Namespace) -> int:
     # 3) AI API 호출 (+ 형식 위반 시 1회 재생성) ----------------------------------
     client = ClaudeClient(get_api_key())
     temp_label = "model default" if temperature is None else temperature
+    log("INFO", f"API 주소: {client.base_url}")
     log("INFO", f"모델: {model}, temperature={temp_label}, max_tokens={max_tokens}, effort={effort}")
 
     def ask(p: str):

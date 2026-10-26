@@ -1,5 +1,9 @@
+import os
+import tempfile
 import unittest
 
+from gitgen.ai_client import supports_effort
+from gitgen.envfile import load_env_file, parse_env
 from gitgen.git_collector import parse_status, split_diff
 from gitgen.safe_mode import SafePolicy, mask_text, DEFAULT_MASK_RULES, prepare_diff
 from gitgen.validator import (
@@ -106,6 +110,42 @@ class ValidatorTest(unittest.TestCase):
         s = shorten("feat: add a very long title that keeps going and going", 30)
         self.assertLessEqual(len(s), 30)
         self.assertFalse(s.endswith(" "))
+
+
+class EffortTest(unittest.TestCase):
+    def test_supports_effort(self):
+        for model in ("claude-sonnet-4", "claude-opus-4", "claude-sonnet-4-20250514", "claude-haiku-4",
+                      "claude-sonnet-4-5", "claude-3-5-haiku-latest"):
+            self.assertFalse(supports_effort(model), model)
+        for model in ("claude-opus-5-5", "claude-sonnet-5-5", "claude-opus-4-5"):
+            self.assertTrue(supports_effort(model), model)
+
+
+class EnvFileTest(unittest.TestCase):
+    def test_parse_env(self):
+        text = '# 주석\n\nAI_API_KEY=abc\nexport AI_MODEL="claude-sonnet-4"\nAI_API_BASE_URL = \'https://x.kr\'\n잘못된 줄\n'
+        self.assertEqual(
+            parse_env(text),
+            {"AI_API_KEY": "abc", "AI_MODEL": "claude-sonnet-4", "AI_API_BASE_URL": "https://x.kr"},
+        )
+
+    def test_load_does_not_override(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, ".env")
+            with open(path, "w", encoding="utf-8-sig") as f:  # BOM 포함 파일도 읽혀야 함
+                f.write("GITGEN_TEST_A=from-file\nGITGEN_TEST_B=from-file\n")
+            os.environ["GITGEN_TEST_A"] = "from-shell"
+            try:
+                loaded = load_env_file(path)
+                self.assertEqual(loaded, ["GITGEN_TEST_B"])
+                self.assertEqual(os.environ["GITGEN_TEST_A"], "from-shell")
+                self.assertEqual(os.environ["GITGEN_TEST_B"], "from-file")
+            finally:
+                os.environ.pop("GITGEN_TEST_A", None)
+                os.environ.pop("GITGEN_TEST_B", None)
+
+    def test_missing_file(self):
+        self.assertEqual(load_env_file(os.path.join(tempfile.gettempdir(), "no-such-dir", ".env")), [])
 
 
 if __name__ == "__main__":

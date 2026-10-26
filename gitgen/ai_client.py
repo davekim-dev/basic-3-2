@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import ssl
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-
+#urllib는 python 표준 라이브러리
 API_KEY_ENV = "AI_API_KEY"
 DEFAULT_BASE_URL = "https://api.anthropic.com"
 ANTHROPIC_VERSION = "2023-06-01"
@@ -19,6 +20,13 @@ _FALLBACK_MODELS = ("claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "cla
 _FALLBACK_BETA = "server-side-fallback-2026-07-01"
 # effort 파라미터를 받지 않는 구형 모델
 _NO_EFFORT = ("claude-3", "haiku-4", "sonnet-4-5", "sonnet-4-0", "opus-4-0", "opus-4-1")
+# 버전 표시 없는 4세대 별칭 (예: claude-sonnet-4, claude-opus-4-20250514)
+_NO_EFFORT_RE = re.compile(r"(sonnet|opus)-4(-\d{8})?$")
+
+
+def supports_effort(model: str) -> bool:
+    m = model.lower()
+    return not (any(tag in m for tag in _NO_EFFORT) or _NO_EFFORT_RE.search(m))
 
 
 class AIError(Exception):
@@ -63,7 +71,7 @@ def build_payload(req: AIRequest) -> tuple[dict, dict]:
     headers: dict[str, str] = {}
     if req.temperature is not None:
         body["temperature"] = req.temperature
-    if req.effort and not any(tag in req.model for tag in _NO_EFFORT):
+    if req.effort and supports_effort(req.model):
         body["output_config"] = {"effort": req.effort}
     if req.model in _FALLBACK_MODELS:
         body["fallbacks"] = "default"
@@ -94,7 +102,13 @@ class ClaudeClient:
         self.calls += 1
         try:
             with urllib.request.urlopen(http_req, timeout=req.timeout) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
+                raw = resp.read().decode("utf-8", errors="replace")
+            if raw.lstrip()[:1] == "<":
+                raise AIError(
+                    f"API 대신 웹페이지(HTML)가 응답했습니다: {self.base_url}/v1/messages\n"
+                    "  AI_API_BASE_URL 이 API 서버 주소인지 확인하세요 (콘솔/웹사이트 주소가 아님, 끝에 /v1 제외)."
+                )
+            data = json.loads(raw)
         except urllib.error.HTTPError as exc:
             raise AIError(_describe_http_error(exc, req)) from exc
         except urllib.error.URLError as exc:
@@ -109,7 +123,7 @@ class ClaudeClient:
         except (socket.timeout, TimeoutError) as exc:
             raise AIError(f"요청 시간 초과({req.timeout:.0f}초). --timeout 값을 늘리거나 잠시 후 다시 시도하세요.") from exc
         except json.JSONDecodeError as exc:
-            raise AIError("API 응답을 JSON 으로 해석할 수 없습니다.") from exc
+            raise AIError(f"API 응답을 JSON 으로 해석할 수 없습니다 ({self.base_url}). AI_API_BASE_URL 을 확인하세요.") from exc
 
         return _parse_response(data, req)
 

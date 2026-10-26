@@ -56,14 +56,86 @@ python main.py pr       # PR 제목 + 본문(Why / What / How to Test) 초안
         ▼
  ⑥ 출력 ── 구분선으로 나뉜 커밋 메시지 / PR 제목 / PR 본문 + 검증 결과
 ```
+```
+                    ┌──────────────────┐
+  git_collector ──▶ │                  │
+  (GitChanges)      │                  │ ──▶ safe_mode.prepare_diff(changes.diffs)
+                    │                  │ ◀── prepared (마스킹·제한된 diff)
+                    │     cli.py       │
+                    │     run()        │ ──▶ prompts.build_commit_prompt(changes, prepared)
+                    │                  │ ◀── prompt (문자열)
+                    │                  │
+                    │                  │ ──▶ ai_client.complete(prompt)
+                    │                  │ ◀── AI 응답
+                    │                  │
+                    │                  │ ──▶ validator.parse / validate / fix
+                    └──────────────────┘ ◀── 최종 초안 → 화면 출력
+```
+
 
 | 단계 | 파일 |
 |---|---|
 | ① Git 수집 | [gitgen/git_collector.py](gitgen/git_collector.py) |
+```
+cli.py run()
+ │
+ ├─ ① ensure_repo_root(cwd)            ← cli.py:114, 검증 (실패하면 GitError로 종료)
+ │     └─ run_git(rev-parse ...)
+ │
+ │   (설정 로드 등)
+ │
+② collect_commit_changes()
+     ├─ collect_status()
+     │     └─ run_git(status) → parse_status() → FileChange들 (+ 브랜치명)
+     ├─ run_git(diff ...)   → split_diff()   → FileDiff들
+     ├─ (새 파일) run_git(diff --no-index) → split_diff() → FileDiff 추가
+     └─ GitChanges(branch, files, diffs, ...) 반환
+ │
+ └─ ③ changes.is_empty() 확인 → 이후 AI 프롬프트 생성 단계로
+ ```
 | ② diff 정리, 마스킹 | [gitgen/safe_mode.py](gitgen/safe_mode.py) |
+```
+for d in diffs:   (FileDiff 하나씩)
+  │
+  ├─ 민감 파일인가?            → 제외 "민감 파일"
+  ├─ lock/빌드 파일인가?        → 제외 "lock/빌드 산출물"
+  ├─ 바이너리 파일인가?         → 제외 "바이너리 파일"
+  ├─ [safe] 파일 수 초과?       → 제외
+  │
+  ├─ [safe] mask_text()로 비밀 정보 가리기
+  ├─ [safe] 줄 수 제한 넘으면 → 남은 줄까지만 자르고 "... N줄 생략" 표시
+  ├─ 전체 글자 수 상한 넘으면 → 자르기 (남은 공간이 500자 미만이면 통째로 제외)
+  │
+  └─ 통과 → chunks에 추가, sent에 경로 기록
+  
+최종: PreparedDiff(text=chunks 합친 것, sent_files, omitted, ...) 반환
+```
 | ③ 프롬프트 | [gitgen/prompts.py](gitgen/prompts.py) |
+```
+build_commit_prompt / build_pr_prompt     ← cli.py가 부르는 메인 함수
+  │
+  ├─ [출력 규칙]        제목 길이, 형식, 언어 등 (커밋용 / PR용이 다름)
+  ├─ _convention_block()  → [팀 컨벤션]   ← Convention에서
+  ├─ [출력 JSON 형식]    {"title": ..., "body": [...]}
+  └─ _changes_block()     → [브랜치] [변경 파일 목록] [변경 통계]
+                            [내용을 보내지 않은 파일] [git diff]   ← GitChanges + PreparedDiff에서
+
+build_retry_prompt   ← AI 응답이 규칙을 어기면 원래 프롬프트 + 이전 출력 + 문제점을 붙여 다시 보냄
+```
 | ④ REST 호출, 예외 처리 | [gitgen/ai_client.py](gitgen/ai_client.py) |
+```
+complete()
+ ├─ build_payload()로 요청문 + 헤더 만들기
+ ├─ 서버로 POST 전송
+ │   ├─ 연결 자체 실패   → complete 안에서 바로 AIError
+ │   ├─ HTTP 오류 코드   → _describe_http_error()가 메시지 생성 → AIError
+ │   └─ 정상 응답(200)   → _parse_response()
+ │                          ├─ 거절/빈 응답 → AIError
+ │                          └─ 정상 → AIResponse 반환
+```
+
 | ⑤ 파싱, 검증, 후처리 | [gitgen/validator.py](gitgen/validator.py) |
+
 | ⑥ CLI, 전체 흐름 | [gitgen/cli.py](gitgen/cli.py) |
 
 ---
@@ -95,7 +167,7 @@ gitgen commit
 
 ## 3. API Key 환경변수 설정
 
-API Key 는 **환경변수 `AI_API_KEY` 로만** 읽습니다. 코드나 설정 파일에 키를 적지 마세요.
+API Key 는 **환경변수 `AI_API_KEY` 로만** 읽습니다(아래 `.env` 파일도 환경변수로 등록됨). 코드나 커밋되는 파일(`.ai-gitgen.json` 등)에는 키를 적지 마세요.
 키는 [Anthropic Console](https://console.anthropic.com/) 에서 발급합니다.
 
 ```bash
@@ -117,9 +189,40 @@ $env:AI_API_KEY = "sk-ant-..."
 | `AI_MODEL` | | 기본 모델 변경 (예: `claude-sonnet-5-5`) |
 | `AI_API_BASE_URL` | | API 주소 변경 (프록시, 테스트용 가짜 서버). 기본 `https://api.anthropic.com` |
 
+### `.env` 파일로 설정하기 (선택)
+
+매번 터미널에 입력하기 번거로우면 `main.py` 와 같은 폴더에 `.env` 파일을 만들어 두세요. 실행할 때 자동으로 읽습니다.
+
+```bash
+cp .env.example .env              # Windows: Copy-Item .env.example .env
+```
+
+```dotenv
+# .env
+AI_API_KEY=sk-ant-...
+# AI_API_BASE_URL=https://...     # Anthropic 호환 프록시를 쓸 때만
+# AI_MODEL=claude-sonnet-5-5
+```
+
+- `.env` 는 `.gitignore` 에 포함되어 **커밋되지 않습니다.** (`git check-ignore -v .env` 로 확인)
+- 터미널에서 이미 설정한 환경변수가 있으면 그 값이 **우선**합니다. `.env` 는 비어 있는 항목만 채웁니다.
+- 불러온 항목은 이름만 표시하고 값은 출력하지 않습니다: `[INFO] .env 에서 환경변수 불러옴: AI_API_KEY, AI_MODEL`
+
 ---
 
 ## 4. 사용법
+```
+[System Prompt]              ← SYSTEM_PROMPT (고정)
+당신은 시니어 개발자입니다... 원칙: diff에 있는 것만, 의도 중심, 비밀값 금지, JSON만
+
+[User Prompt]                ← build_commit_prompt()
+다음 변경 사항으로 커밋 메시지를 작성하세요.
+[출력 규칙]        제목 50자 권장/72자 최대, type(scope): 요약, 불릿 1~3개
+[팀 컨벤션]        허용 type, scope 규칙, 팀 규칙      ← _convention_block(conv)
+[출력 JSON 형식]   {"title": "...", "body": [...]}
+[작성자가 알려준 변경 이유]  -c 옵션 값             ← _changes_block(...)
+[브랜치] [변경 파일 목록] [변경 통계] [내용 제외 파일] [git diff]
+```
 
 ### 커밋 메시지
 
@@ -501,3 +604,392 @@ python3 -m unittest discover -s tests -t .
 - macOS 에서 python.org 설치본을 쓰는데 `SSL 인증서 오류` 가 나면 `/Applications/Python 3.x/Install Certificates.command` 를 실행하세요.
 - 사내 프록시를 쓰면 `HTTPS_PROXY` 환경변수를 설정하세요 (`urllib` 가 자동으로 사용).
 - 기본 모델(`claude-opus-5-5`)로 보낸 요청이 안전 분류기에 거절되면 서버가 자동으로 다른 모델로 다시 시도하도록 `fallbacks` 옵션을 함께 보냅니다.
+
+
+## 14. 추가 공부
+- urllib: 파이썬에 기본으로 들어 있는 인터넷 통신용 표준 라이브러리
+
+### 먼저 알아둘 것: 토큰(token)
+
+AI 는 글을 **토큰** 단위로 읽고 씁니다. 토큰은 단어보다 조금 작은 조각입니다 (예: `"refactor"` → `"re"` + `"factor"`).
+AI 가 답을 쓰는 과정은 "다음에 올 토큰 하나 고르기"를 계속 반복하는 것입니다.
+아래 두 파라미터는 이 반복 과정에서 각각 다음을 정합니다.
+
+- `temperature`: 매번 **어떤 토큰을 고를지**
+- `max_tokens`: **몇 번까지** 고를지
+
+### temperature: 단어(토큰) 고르기의 무작위성
+
+**정의:** AI 가 다음 토큰을 고를 때 얼마나 무작위로 고를지 정하는 값입니다. 범위는 `0.0 ~ 1.0` 입니다.
+
+AI 는 다음 토큰 후보마다 확률을 매깁니다. 예를 들어 커밋 메시지가 `"fix: "` 로 시작했다면:
+
+| 다음 토큰 후보 | 확률 |
+| --- | --- |
+| `correct` | 60% |
+| `resolve` | 30% |
+| `handle` | 10% |
+
+- **낮은 temperature (0 에 가까움):** 거의 항상 확률이 가장 높은 `correct` 를 고릅니다. 같은 입력이면 매번 거의 같은 결과가 나옵니다.
+- **높은 temperature (1 에 가까움):** `resolve`, `handle` 도 자주 고릅니다. 실행할 때마다 표현이 달라집니다.
+
+**예시:** 같은 diff 로 커밋 메시지를 두 번 생성하면
+
+```text
+temperature 0.0
+  1회: fix: correct timeout error message
+  2회: fix: correct timeout error message      ← 같음
+
+temperature 1.0
+  1회: fix: correct timeout error message
+  2회: fix: handle request timeout gracefully  ← 달라짐
+```
+
+**언제 어떤 값을 쓰나**
+
+| 값 | 특징 | 어울리는 작업 |
+| --- | --- | --- |
+| 낮음 (0 ~ 0.3) | 일관적, 예측 가능 | 커밋 메시지, 코드 생성, 정해진 형식(JSON) 출력 |
+| 높음 (0.7 ~ 1.0) | 다양함, 창의적 | 아이디어 브레인스토밍, 글쓰기 |
+
+> 이 프로젝트에서는 Claude Opus 5.5 같은 최신 모델이 `temperature` 를 받지 않습니다 (보내면 400 오류). 그래서 `--temperature` 를 지정했을 때만 요청에 넣습니다 → [6장](#6-api-파라미터와-결과-품질) 참고.
+
+### max_tokens: 응답 길이 상한
+
+**정의:** AI 가 한 번의 응답에서 만들 수 있는 **토큰 개수의 최대값**입니다. 이 개수에 닿으면 문장 중간이라도 바로 멈춥니다.
+이때 응답의 `stop_reason` 은 `"max_tokens"` 가 됩니다. 끝까지 다 쓰고 멈추면 `"end_turn"` 입니다.
+
+**예시:** 커밋 메시지를 JSON 으로 받아야 하는 상황
+
+```text
+max_tokens 넉넉함 (8000)
+  {"subject": "fix: correct timeout error message", "body": "..."}   ← 정상
+
+max_tokens 너무 작음 (10)
+  {"subject": "fix: correct tim                                       ← 중간에 잘림, JSON 깨짐
+```
+
+**주의할 점**
+
+- **상한일 뿐, 목표 길이가 아닙니다.** 8000 으로 줘도 답이 짧으면 100 토큰만 쓰고 끝납니다. 과금도 실제로 쓴 만큼만 됩니다.
+- **너무 작으면** 응답이 잘리거나, 아예 비어 버립니다. 최신 모델은 답을 쓰기 전에 내부 추론에도 토큰을 쓰는데, 이것도 `max_tokens` 에 포함되기 때문입니다.
+  - 이 경우 `ai_client.py` 의 `_parse_response` 가 `max_tokens(...) 에 도달해 응답이 비었습니다` 오류를 냅니다.
+- 그래서 이 프로젝트는 기본값을 넉넉하게 `8000` 으로 둡니다.
+
+### 한눈에 비교
+
+| | temperature | max_tokens |
+| --- | --- | --- |
+| 정하는 것 | 답의 **내용**이 얼마나 달라지는지 | 답의 **길이**가 최대 얼마인지 |
+| 값 범위 | 0.0 ~ 1.0 | 1 이상의 정수 |
+| 잘못 정하면 | 너무 높음 → 형식 규칙을 어길 수 있음 | 너무 작음 → 응답이 잘리거나 비어 버림 |
+| 이 프로젝트 기본값 | 보내지 않음 (모델 기본값 사용) | 8000 |
+
+
+## 15. 확인해보기
+- py -3.13 -m unittest tests.test_e2e.E2ETest.test_no_changes tests.test_e2e.E2ETest.test_not_repo_root -v
+
+### 실행 경우의 수
+
+#### 공통 (commit / pr 모두)
+
+| # | 경우 | 상황 만드는 법 |
+|---|---|---|
+| 0-1 | Git 저장소가 아닌 곳에서 실행 | `git init` 안 된 폴더로 이동해서 실행 |
+| 0-2 | 저장소의 하위 폴더에서 실행 | `cd tests` 후 `python ../main.py commit` |
+| 0-3 | API Key 없음 | `.env` 의 `AI_API_KEY` 를 비우고 실행 |
+| 0-4 | API Key 틀림 | `AI_API_KEY` 에 아무 값이나 넣고 실행 |
+| 0-5 | API 주소가 웹페이지 | `AI_API_BASE_URL` 에 콘솔/웹사이트 주소를 넣고 실행 |
+| 0-6 | API 서버에 연결 불가 | `AI_API_BASE_URL=http://127.0.0.1:1` 로 실행 |
+| 0-7 | 지원하지 않는 모델 | `--model 없는-모델-이름` |
+| 0-8 | API 호출 없이 확인 | `--dry-run` |
+
+#### commit
+
+| # | 경우 | 상황 만드는 법 |
+|---|---|---|
+| C-1 | 변경 없음 | 모든 변경을 커밋한 깨끗한 상태 |
+| C-2 | 기존 파일 수정, `git add` 안 함 | 추적 중인 파일 수정 |
+| C-3 | 새 파일만 있음, `git add` 안 함 | 새 파일 생성 |
+| C-4 | `git add` 한 파일만 있음 | 파일 수정/생성 후 `git add` |
+| C-5 | `git add` 한 파일 + 안 한 파일 섞임 | 파일 2개 수정 후 1개만 `git add` |
+| C-6 | `--staged`, `git add` 한 파일 없음 | 파일만 수정하고 `commit --staged` |
+| C-7 | 파일 삭제 | 추적 중인 파일 삭제 (`git rm` 또는 그냥 삭제) |
+| C-8 | 파일 이름 변경 | `git mv a.py b.py` |
+| C-9 | 민감 파일 포함 | `secret.env`, `id_rsa` 같은 이름의 파일 추가 |
+| C-10 | 민감 값이 들어간 코드 + safe-mode | 코드에 `API_KEY = "sk-..."` 작성 후 `--safe-mode` |
+| C-11 | 변경 이유 함께 전달 | `-c "로그인 버그 #12 수정"` |
+| C-12 | 형식 위반 시 재생성 vs 후처리 | `--max-calls 2` (기본) / `--max-calls 1` |
+| C-13 | 결과를 파일로 저장 | `--save AI_MSG` → `git commit -F AI_MSG` |
+
+#### pr
+
+| # | 경우 | 상황 만드는 법 |
+|---|---|---|
+| P-1 | `main` 에서 실행, 변경 없음 | `main` 의 깨끗한 상태 |
+| P-2 | `main` 에서 실행, 커밋 안 한 변경 있음 | `main` 에서 파일 수정 |
+| P-3 | 브랜치 생성 직후, 커밋·변경 없음 | `git switch -c feature/x` 직후 |
+| P-4 | 브랜치에서 커밋 있음, 커밋 안 한 변경 없음 | 브랜치에서 수정 → 커밋 |
+| P-5 | 브랜치에서 커밋 있음 + 커밋 안 한 변경 있음 | P-4 후 파일 하나 더 수정 |
+| P-6 | 비교 기준 브랜치 지정 | `--base develop` (존재하는 브랜치) |
+| P-7 | 없는 비교 기준 브랜치 지정 | `--base no-such-branch` |
+| P-8 | 변경 이유 함께 전달 | `-c "회원가입 요구사항 반영"` |
+| P-9 | 결과를 파일로 저장 | `--save PR.md` |
+
+### 경우별 실습 명령 (Windows PowerShell)
+
+#### 시작 전 확인
+
+```powershell
+cd "<basic-3-2 폴더 경로>"
+git status --short          # 아무것도 나오지 않아야 함 (작업 중인 변경은 먼저 커밋)
+git branch --show-current   # main
+```
+
+- 작업 중인 변경이 남아 있으면 그 파일도 함께 수집되어 결과가 섞입니다. C-1 / P-1 은 깨끗한 상태에서만 재현됩니다.
+- 연습 파일은 `practice.py`, `practice2.py` 등 **새 파일만** 사용하고, 각 블록의 `# 정리` 까지 실행하면 시작 전 상태로 돌아옵니다.
+- 커밋이 필요한 경우는 임시 브랜치 `practice` 에서만 커밋하고, 정리할 때 브랜치째 삭제합니다. **`practice` 브랜치는 push 하지 않습니다.**
+- 비용 없이 확인만 하려면 실행 명령 끝에 `--dry-run` 을 붙입니다.
+- 파일 생성에 `-Encoding ascii` 를 쓰는 이유: PowerShell 5.1 의 `utf8` 은 파일 앞에 BOM 을 붙여 diff 에 보이지 않는 문자가 섞입니다.
+
+#### commit
+
+```powershell
+# C-1 변경 없음
+py -3.13 main.py commit
+```
+
+```powershell
+# C-2 기존(추적 중) 파일 수정, git add 안 함
+# 준비: 임시 브랜치에서 practice.py 를 커밋해 "추적 중인 파일" 로 만든다
+git switch -c practice
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+git add practice.py
+git commit -m "practice: add practice.py"
+Add-Content practice.py "def sub(a, b):`n    return a - b" -Encoding ascii
+# 실행
+py -3.13 main.py commit
+# 정리
+git restore practice.py
+git switch main
+git branch -D practice
+```
+
+```powershell
+# C-3 새 파일만 있음, git add 안 함
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+py -3.13 main.py commit
+# 정리
+Remove-Item practice.py
+```
+
+```powershell
+# C-4 git add 한 파일만 있음
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+git add practice.py
+py -3.13 main.py commit
+# 정리
+git restore --staged practice.py
+Remove-Item practice.py
+```
+
+```powershell
+# C-5 git add 한 파일 + 안 한 파일 섞임
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+Set-Content practice2.py "def mul(a, b):`n    return a * b" -Encoding ascii
+git add practice.py
+py -3.13 main.py commit
+# 정리
+git restore --staged practice.py
+Remove-Item practice.py, practice2.py
+```
+
+```powershell
+# C-6 --staged 인데 git add 한 파일 없음
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+py -3.13 main.py commit --staged
+# 정리
+Remove-Item practice.py
+```
+
+```powershell
+# C-7 파일 삭제
+git switch -c practice
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+git add practice.py
+git commit -m "practice: add practice.py"
+Remove-Item practice.py
+# 실행
+py -3.13 main.py commit
+# 정리
+git restore practice.py
+git switch main
+git branch -D practice
+```
+
+```powershell
+# C-8 파일 이름 변경
+git switch -c practice
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+git add practice.py
+git commit -m "practice: add practice.py"
+git mv practice.py practice_math.py
+# 실행
+py -3.13 main.py commit
+# 정리
+git mv practice_math.py practice.py
+git switch main
+git branch -D practice
+```
+
+```powershell
+# C-9 민감 파일 포함
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+Set-Content secret.env "PASSWORD=practice1234" -Encoding ascii
+py -3.13 main.py commit
+# 정리
+Remove-Item practice.py, secret.env
+```
+
+```powershell
+# C-10 민감 값이 들어간 코드 + safe-mode (가짜 키/이메일 사용)
+Set-Content practice_config.py 'API_KEY = "sk-ant-api03-practicepracticepractice"', 'OWNER = "kim@example.com"' -Encoding ascii
+py -3.13 main.py commit --dry-run               # safe-mode OFF: 전송될 프롬프트 확인
+py -3.13 main.py commit --dry-run --safe-mode   # safe-mode ON : 전송될 프롬프트 비교
+py -3.13 main.py commit --safe-mode             # 실제 실행
+# 정리
+Remove-Item practice_config.py
+```
+
+```powershell
+# C-11 변경 이유 함께 전달
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+git add practice.py
+py -3.13 main.py commit -c "계산 기능 연습용 함수 추가"
+# 정리
+git restore --staged practice.py
+Remove-Item practice.py
+```
+
+```powershell
+# C-12 형식 위반 시 재생성(2) vs 후처리(1)  ※ AI 응답이 규칙을 지키면 둘 다 1회로 끝남
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+git add practice.py
+py -3.13 main.py commit --max-calls 2
+py -3.13 main.py commit --max-calls 1
+# 정리
+git restore --staged practice.py
+Remove-Item practice.py
+```
+
+```powershell
+# C-13 결과를 파일로 저장
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+git add practice.py
+py -3.13 main.py commit --save AI_MSG
+Get-Content AI_MSG -Encoding utf8     # 실제 적용은 git commit -F AI_MSG (실습에서는 실행하지 않음)
+# 정리
+git restore --staged practice.py
+Remove-Item practice.py, AI_MSG
+```
+
+#### pr
+
+```powershell
+# P-1 main 에서 실행, 변경 없음
+py -3.13 main.py pr
+```
+
+```powershell
+# P-2 main 에서 실행, 커밋 안 한 변경 있음
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+py -3.13 main.py pr
+# 정리
+Remove-Item practice.py
+```
+
+```powershell
+# P-3 브랜치 생성 직후, 커밋·변경 없음
+git switch -c practice
+py -3.13 main.py pr
+# 정리
+git switch main
+git branch -D practice
+```
+
+```powershell
+# P-4 브랜치에서 커밋 있음, 커밋 안 한 변경 없음
+git switch -c practice
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+git add practice.py
+git commit -m "practice: add practice.py"
+py -3.13 main.py pr
+# 정리
+git switch main
+git branch -D practice
+```
+
+```powershell
+# P-5 브랜치에서 커밋 있음 + 커밋 안 한 변경 있음
+git switch -c practice
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+git add practice.py
+git commit -m "practice: add practice.py"
+Set-Content practice2.py "def mul(a, b):`n    return a * b" -Encoding ascii
+py -3.13 main.py pr
+# 정리
+Remove-Item practice2.py
+git switch main
+git branch -D practice
+```
+
+```powershell
+# P-6 비교 기준 브랜치 지정 (연습용 기준 브랜치 practice-base 를 만들어 사용)
+git branch practice-base
+git switch -c practice
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+git add practice.py
+git commit -m "practice: add practice.py"
+py -3.13 main.py pr --base practice-base
+# 정리
+git switch main
+git branch -D practice practice-base
+```
+
+```powershell
+# P-7 없는 비교 기준 브랜치 지정
+py -3.13 main.py pr --base no-such-branch
+```
+
+```powershell
+# P-8 변경 이유 함께 전달
+git switch -c practice
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+git add practice.py
+git commit -m "practice: add practice.py"
+py -3.13 main.py pr -c "계산 기능 요구사항 반영"
+# 정리
+git switch main
+git branch -D practice
+```
+
+```powershell
+# P-9 결과를 파일로 저장
+git switch -c practice
+Set-Content practice.py "def add(a, b):`n    return a + b" -Encoding ascii
+git add practice.py
+git commit -m "practice: add practice.py"
+py -3.13 main.py pr --save PR.md
+Get-Content PR.md -Encoding utf8
+# 정리
+Remove-Item PR.md
+git switch main
+git branch -D practice
+```
+
+#### 정리가 잘 됐는지 확인
+
+```powershell
+git status --short     # 아무것도 나오지 않아야 함
+git branch             # main 만 있어야 함
+```
